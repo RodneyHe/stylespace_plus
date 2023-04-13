@@ -1,0 +1,13 @@
+{
+    "version": "0.0.3",
+    "mode": "training",
+    "phase": "landmark",
+    "dataset": "gen_dataset",
+    "batch_size": 6, 
+    "epoch_num": 1, 
+    "lr_rate": 5e-6, 
+    "z_dims": 512, 
+    "out_dir": "./output", 
+    "pretrained_pkl": "./pretrained/ffhq.pkl",
+    "cross_frequency": 3
+}

@@ -1,0 +1,17 @@
+dataset/
+pretrained/
+__pycache__/
+dnnlib/__pycache__/
+torch_utils/__pycache__/
+torch_utils/ops/__pycache__/
+wandb/
+output/
+test.configs/
+train.configs/
+typescript
+*.code-workspace
+
+*.idea
+*.png
+*.jpg
+*.npy
