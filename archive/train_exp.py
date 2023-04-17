@@ -12,7 +12,7 @@ import wandb
 import dnnlib, generail_utils.legacy as legacy, utils.general_utils as general_utils
 
 from data_loader.gen_data import FaceLandmarksDataset, Transforms
-import model.model as model
+import archive.model as model
 from training_modified import networks
 
 train_parser = argparse.ArgumentParser(prog="train", usage="%(prog)s [options]", description="train the style plus mapping function")

@@ -1,6 +1,6 @@
 import torch, dlib
 import torch.nn as nn
-import torchvision.transforms.functional as F
+import torchvision.transforms.functional as TF
 import torchvision.transforms as transforms
 import numpy as np
 from model import mobilenet_v1
@@ -31,6 +31,7 @@ class LandmarksDetector(nn.Module):
         if x is not None:
             params = self.base_model(x)
             pts68 = predict_68pts(params, roi_boxes)
+            pts68 = pts68[:,:,17:]
             return pts68, idx_list
         else:
             return None, None
@@ -48,7 +49,7 @@ class LandmarksDetector(nn.Module):
             return None
     
     def lazy_preprocess(self, images):
-        images = F.resize(images, (120, 120))
+        images = TF.resize(images, (120, 120))
         return images
         
     def hard_preprocess(self, images):
@@ -99,7 +100,7 @@ class LandmarksDetector(nn.Module):
                 dey = dh
             
             res[:, dsy:dey, dsx:dex] = image[:, sy:ey, sx:ex]
-            cropped_image = F.resize(res, (120, 120))
+            cropped_image = TF.resize(res, (120, 120))
             cropped_image_list.append(cropped_image[None, ...])
         
         if len(cropped_image_list) != 0:

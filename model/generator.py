@@ -44,7 +44,7 @@ class Generator(nn.Module):
         attr_embedding = self.attr_encoder(attr_img_input)
         
         # Attribute landmarks
-        attr_landmarks, idx_list = self.landmarks_detector(attr_img_input)
+        attr_landmarks, attr_idx_list = self.landmarks_detector(attr_img_input)
 
         # Style+ embedding and control vector generation
         feature_tag = torch.concat([id_embedding, attr_embedding], -1)
@@ -58,7 +58,7 @@ class Generator(nn.Module):
         # Convert RGB to BGR to make the generated image compatible with the landmark detector
         gen_images = gen_images.flip(-3)
         
-        return gen_images, id_embedding, attr_embedding, attr_landmarks, idx_list
+        return gen_images, id_embedding, attr_embedding, attr_landmarks, attr_idx_list
     
     def _train(self):
         self.attr_encoder._train()

@@ -11,7 +11,7 @@ import wandb
 import dnnlib, generail_utils.legacy as legacy
 
 from data_loader.ffhq_data import FaceLandmarksDataset, Transforms
-from model.model import MappingNetwork, FeatureExtractor, StyleSpaceDiscriminator
+from archive.model import MappingNetwork, FeatureExtractor, StyleSpaceDiscriminator
 from training_modified import networks
 import face_alignment
 

@@ -12,7 +12,7 @@ import wandb
 import dnnlib, generail_utils.legacy as legacy
 
 from data_loader.gen_data import FaceLandmarksDataset, Transforms
-from model.model import RefMappingNetwork, FeatureExtractor, StyleSpaceDiscriminator
+from archive.model import RefMappingNetwork, FeatureExtractor, StyleSpaceDiscriminator
 from training_modified import networks
 
 # Train configuration

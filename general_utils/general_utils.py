@@ -75,6 +75,22 @@ def convert_tensor_to_image(tensor):
 
     return tensor
 
+def concatenate_image(id_image: torch.Tensor, attr_image: torch.Tensor, gen_image: torch.Tensor):
+    # Convert BGR to RGB
+    id_image = id_image.flip(-3)
+    attr_image = attr_image.flip(-3)
+    gen_image = gen_image.flip(-3)
+    
+    # Roughly move to (0, 1)
+    id_image = ((id_image + 1) / 2).clamp(0, 1)
+    attr_image = ((attr_image + 1) / 2).clamp(0, 1)
+    gen_image = ((gen_image + 1) / 2).clamp(0, 1)
+    
+    # Concatenate images
+    con_image = torch.cat((attr_image, gen_image, id_image), 3)
+    
+    return con_image
+
 def draw_landmarks(image, landmark):
     image_draw = ImageDraw.Draw(image)
     for x, y in zip(landmark[0], landmark[1]):

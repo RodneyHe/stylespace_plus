@@ -12,7 +12,7 @@ import wandb
 import dnnlib, generail_utils.legacy as legacy
 
 from Data_loader.FFHQ_data import FaceLandmarksDataset, Transforms
-import model.model as model
+import archive.model as model
 from training_modified import networks
 
 # Train configuration

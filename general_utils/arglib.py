@@ -5,7 +5,6 @@ import argparse
 from pathlib import Path
 from abc import ABC, abstractmethod
 
-
 class BaseArgs(ABC):
     def __init__(self):
         self.args = None

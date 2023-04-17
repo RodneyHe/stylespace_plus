@@ -1,38 +1,9 @@
-import os
 import torch
-
-import sys
-import logging
 from model.network import Network
-from model.generator import Generator
 
 from writer import Writer
 from trainer import Trainer
 from general_utils import arglib
-
-def init_logger(args):
-    root_logger = logging.getLogger()
-
-    level = logging.DEBUG if args.log_debug else logging.INFO
-    root_logger.setLevel(level)
-
-    file_handler = logging.FileHandler(f'{args.results_dir}/log.txt')
-    console_handler = logging.StreamHandler()
-
-    datefmt = '%Y-%m-%d %H:%M:%S'
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt)
-
-    file_handler.setLevel(level)
-    console_handler.setLevel(level)
-
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
-
-    pil_logger = logging.getLogger('PIL.PngImagePlugin')
-    pil_logger.setLevel(logging.INFO)
 
 def main():
     train_args = arglib.TrainArgs()

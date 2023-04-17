@@ -5,14 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Current File",
+            "name": "Debug",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "exp_01",
+                "exp_debug",
                 "--resolution", "256",
                 "--pretrained_models_path", "./pretrained",
                 "--dataset", "./dataset",
