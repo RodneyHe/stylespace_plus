@@ -37,7 +37,7 @@ class BaseArgs(ABC):
 
         # Log & Results
         self.parser.add_argument('name', type=str, help='Name under which run will be saved')
-        self.parser.add_argument('--results_dir', type=str, default='../results')
+        self.parser.add_argument('--results_dir', type=str, default='./results')
         self.parser.add_argument('--log_debug', action='store_true')
 
         # Other
@@ -91,7 +91,7 @@ class TrainArgs(BaseArgs):
     def add_args(self):
         super().add_args()
 
-        self.parser.add_argument('--dataset_path', type=str, default='../dataset')
+        self.parser.add_argument('--dataset_path', type=str, default='./dataset')
 
         self.parser.add_argument('--num_epochs', type=int, default=math.inf)
         self.parser.add_argument('--cross_frequency', type=int, default=3,
@@ -119,7 +119,7 @@ class TrainArgs(BaseArgs):
                                  help='Once in how many epochs to perform a test')
         self.parser.add_argument('--test_size', type=int, default=50,
                                  help='How many mini-batches should be used for a test')
-        self.parser.add_argument('--not_improved_exit', type=int, default=math.inf,
+        self.parser.add_argument('--not_improved_exit', type=int, default=5,
                                  help='After how many not-improved test to exit')
         BaseArgs.add_bool_arg(self.parser, 'test_with_arcface', default=False)
 

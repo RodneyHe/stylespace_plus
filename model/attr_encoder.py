@@ -65,8 +65,13 @@ class Attr_Encoder(nn.Module):
         for param in self.base_model.parameters():
             param.requires_grad = False
     
-    def _save(self):
-        torch.save(self.base_model.state_dict(), str(self.args.weights_dir.joinpath(self.__class__.__name__ + ".pth")))
+    def _save(self, reason):
+        torch.save(self.base_model.state_dict(), str(self.args.weights_dir.joinpath(self.__class__.__name__ + reason + ".pth")))
+    
+    def _load(self, reason):
+        self.base_model.load_state_dict(torch.load(str(self.args.weights_dir.joinpath(self.__class__.__name__ + reason + ".pth"))))
+        self.base_model.eval()
+        print(self.__class__.__name__ + " loads checkpoint from: " + str(self.args.weights_dir.joinpath(self.__class__.__name__ + reason + ".pth")))
 
 class Attr_Encoder_Deprecated(nn.Module):
     def __init__(self, args, attr_model_path=None):

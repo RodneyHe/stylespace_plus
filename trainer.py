@@ -24,14 +24,18 @@ class Trainer(object):
         self.train_id_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_id_sampler)
         self.train_attr_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_attr_sampler)
         
+        # Dataset statistics
+        self.styles_mean = torch.from_numpy(np.load(args.dataset_path.joinpath("gen_dataset/styles_mean.npy"))).to(device)
+        self.styles_std = torch.from_numpy(np.load(args.dataset_path.joinpath("gen_dataset/styles_std.npy"))).to(device)
+        
         validate_dataset = GeneratedDataset(args, "validate")
         validate_id_sampler, validate_attr_sampler, self.validate_dataset_length = self.get_id_attr_sampler(len(validate_dataset), args.cross_frequency)
         self.validate_id_loader = DataLoader(validate_dataset, batch_size=args.batch_size, sampler=validate_id_sampler)
         self.validate_attr_loader = DataLoader(validate_dataset, batch_size=args.batch_size, sampler=validate_attr_sampler)
 
         # lrs & optimizers
-        self.embedding_optimizer = torch.optim.Adam([p for p in list(self.model.parameters()) if p.requires_grad], lr=5e-6)
-        self.regulizing_optimizer = torch.optim.Adam([p for p in list(self.model.parameters()) if p.requires_grad], lr=5e-8)
+        self.embedding_optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-6)
+        self.regulizing_optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-8)
 
         # Losses
         self.id_loss_func = nn.L1Loss()
@@ -52,10 +56,10 @@ class Trainer(object):
         #self.phase = self.model.phase
 
         # Lambdas
-        self.lambda_pixel = 0.02
-
-        self.lambda_id = 100
-        self.lambda_landmarks = 0.001
+        self.lambda_id = 50
+        self.lambda_landmarks = 0.002
+        self.lambda_pixel = 0.06
+        self.lambda_styles_regularizer = 5e-8
 
         # Test
         self.test_not_imporved = 0
@@ -65,13 +69,12 @@ class Trainer(object):
     def train(self):
         # if self.phase == "regulizing":
         #     self.model._load(self.args.name + "/weights")
-        
-        print(f"Epoch: {self.num_epoch}")
 
-        while self.num_epoch < self.args.num_epochs:
+        while True:
+            
+            print(f"Epoch: {self.num_epoch}")
 
             try:
-
                 # Train epoch
                 self.train_epoch(phase="embedding")
                 
@@ -82,7 +85,7 @@ class Trainer(object):
                 raise
 
             # if self.test_not_imporved > self.args.not_improved_exit:
-            #    self.logger.info(f'Test has not improved for {self.args.not_improved_exit} epochs. Exiting...')
+            #    print(f"Test has not improved for {self.args.not_improved_exit} epochs. Exiting...")
             #    break
 
             # if self.num_epoch == self.args.num_epochs:
@@ -94,8 +97,11 @@ class Trainer(object):
             #         self.model.my_save()
             #         break
             
-            if self.num_epoch == self.args.num_epochs:
+            
+            
+            if self.num_epoch == self.args.num_epochs - 1:
                 self.model._save()
+                break
 
             self.num_epoch += 1
 
@@ -107,7 +113,7 @@ class Trainer(object):
         # elif phase == "regularizing":
         #     pass
 
-        pbar = tqdm(range(self.train_dataset_length), ncols=60)
+        pbar = tqdm(range(self.train_dataset_length), ncols=80, postfix="train_epoch")
         for step in pbar:
             if self.args.cross_frequency and (step % self.args.cross_frequency == 0):
                 self.is_cross_epoch = True
@@ -124,7 +130,10 @@ class Trainer(object):
             else:
                 attr_images = id_images
 
-            gen_images, id_embedding, _, src_landmarks, src_idx_list = self.model.generator(id_images, id_zs, attr_images)
+            gen_images, id_embedding, _, src_landmarks, src_idx_list, modified_styles = self.model.generator(id_images, id_zs, attr_images)
+            
+            # Compute the negative log likelihood of style space
+            styles_regularizer = self.lambda_styles_regularizer * torch.pow((modified_styles-torch.broadcast_to(self.styles_mean, (modified_styles.shape[0], modified_styles.shape[1]))), 2).sum()
             
             if src_landmarks is None:
                 continue
@@ -155,18 +164,21 @@ class Trainer(object):
             else:
                 pixel_loss = 0
 
-            total_loss = id_loss + landmarks_loss + pixel_loss
+            total_loss = id_loss + landmarks_loss + pixel_loss + styles_regularizer
 
             Writer.add_scalar("loss/id_loss", id_loss, step=(step+self.num_epoch*self.train_dataset_length))
             Writer.add_scalar("loss/landmarks_loss", landmarks_loss, step=(step+self.num_epoch*self.train_dataset_length))
+            Writer.add_scalar("loss/styles_regularizer", styles_regularizer, step=(step+self.num_epoch*self.train_dataset_length))
             Writer.add_scalar("loss/total_loss", total_loss, step=(step+self.num_epoch*self.train_dataset_length))
 
             if not self.is_cross_epoch:
                 Writer.add_scalar("loss/pixel_loss", pixel_loss, step=(step+self.num_epoch*self.train_dataset_length))
 
             if step % 3000 == 0 and self.is_cross_epoch:
-                general_utils.save_images(id_images, attr_images, gen_images, src_landmarks, pred_landmarks, 256,
-                                          self.args.images_results.joinpath(f"e{self.num_epoch}_s{step}_.png"), 3)
+                general_utils.save_images(id_images, 
+                                          attr_images, 
+                                          gen_images, 
+                                          self.args.images_results.joinpath(f"e{self.num_epoch}_s{step}_.png"), landmarks=False)
 
             if total_loss != 0:
                 self.embedding_optimizer.zero_grad()
@@ -174,69 +186,78 @@ class Trainer(object):
                 self.embedding_optimizer.step()
 
     # Test function
-    def test_epoch(self):
+    def test_epoch(self, phase):
         self.model._test()
 
-        similarities = {'id_to_pred': [], 'id_to_attr': [], 'attr_to_pred': []}
+        similarities = {"id_to_pred": [], "id_to_attr": [], "attr_to_pred": []}
 
-        fake_reconstruction = {'MSE': [], 'PSNR': [], 'ID': []}
-        real_reconstruction = {'MSE': [], 'PSNR': [], 'ID': []}
+        fake_reconstruction = {"MSE": [], "PSNR": [], "ID": []}
+        real_reconstruction = {"MSE": [], "PSNR": [], "ID": []}
 
         lnd_dist = []
-        for i in range(self.args.test_size):
+        save_image = True
+        pbar = tqdm(range(self.args.test_size), ncols=80, postfix="test_epoch")
+        for step in pbar:
             id_images, id_zs = next(iter(self.validate_id_loader))
             id_images = id_images.to(self.device)
             id_zs = id_zs.to(self.device)
             attr_images, attr_zs = next(iter(self.validate_attr_loader))
             attr_images = attr_images.to(self.device)
 
-            gen_images, id_embedding, attr_embedding, src_landmarks, _ = self.model.generator(id_images, id_zs, attr_images)
+            gen_images, id_embedding, attr_embedding, src_landmarks, src_idx_list, _ = self.model.generator(id_images, id_zs, attr_images)
             
             if src_landmarks is None:
                 continue
-            
+
             gen_id_embedding = self.model.generator.id_encoder(gen_images)
-            
-            similarities['id_to_pred'].extend(nn.functional.cosine_similarity(id_embedding, gen_id_embedding).numpy())
-            similarities['id_to_attr'].extend(nn.functional.cosine_similarity(id_embedding, attr_embedding).numpy())
-            similarities['attr_to_pred'].extend(nn.functional.cosine_similarity(attr_embedding, gen_id_embedding).numpy())
+            attr_id_embedding = self.model.generator.id_encoder(attr_images)
+
+            similarities['id_to_pred'].append(nn.functional.cosine_similarity(id_embedding, gen_id_embedding).mean().item())
+            similarities['id_to_attr'].append(nn.functional.cosine_similarity(id_embedding, attr_embedding).mean().item())
+            similarities['attr_to_pred'].append(nn.functional.cosine_similarity(attr_id_embedding, gen_id_embedding).mean().item())
 
             # Landmarks
             try:
-                pred_landmarks, _ = self.model.generator.landmarks_detector(gen_images)
+                pred_landmarks, pred_idx_list = self.model.generator.landmarks_detector(gen_images)
             except Exception as e:
                 pred_landmarks = None
 
-            if pred_landmarks is None:
+            if len(src_idx_list) != len(pred_idx_list) or pred_landmarks is None:
                 continue
-
-            lnd_dist.extend(nn.functional.mse_loss(src_landmarks, pred_landmarks).numpy())
+            else:
+                lnd_dist.append(nn.functional.mse_loss(src_landmarks, pred_landmarks).item())
 
             # Fake reconstruction (using generated image as attribute image)
-            self.test_reconstruction(id_images, id_zs, fake_reconstruction, display=(i==0), display_name='id_img')
+            self.test_reconstruction(id_images, id_zs, fake_reconstruction, display=(step==0), display_name="id_img")
 
             if self.args.test_real_attr:
                 # Real Reconstruction (using real image as attribute image)
-                self.test_reconstruction(attr_images, attr_zs, real_reconstruction, display=(i==0), display_name='attr_img')
+                self.test_reconstruction(attr_images, attr_zs, real_reconstruction, display=(step==0), display_name="attr_img")
 
-            if i == 0:
-                general_utils.save_images(id_images, attr_images, gen_images, src_landmarks, pred_landmarks, 256,
-                                          self.args.images_results.joinpath(f"test_e{self.num_epoch}.png"), 3)
+            if save_image:
+                general_utils.save_images(id_images, 
+                                          attr_images, 
+                                          gen_images, 
+                                          self.args.images_results.joinpath(f"test_e{self.num_epoch}.png"), 
+                                          landmarks=True,
+                                          attr_landmarks=src_landmarks,
+                                          gen_landmarks=pred_landmarks)
 
-                Writer.add_image('test/prediction', [id_images[0], attr_images[0], gen_images[0]], step=self.num_epoch)
+                Writer.add_image("test/prediction", [attr_images[0], gen_images[0], id_images[0]], step=self.num_epoch)
+                save_image = False
 
         # Similarity
-        mean_lnd_dist = np.mean(lnd_dist)
+        #mean_lnd_dist = np.mean(lnd_dist)
 
-        id_to_pred = np.mean(similarities['id_to_pred'])
-        attr_to_pred = np.mean(similarities['attr_to_pred'])
+        id_to_pred = np.mean(similarities["id_to_pred"])
+        attr_to_pred = np.mean(similarities["attr_to_pred"])
         mean_disen = attr_to_pred - id_to_pred
 
-        Writer.add_scalar('similarity/score', mean_disen, step=self.num_epoch)
-        Writer.add_scalar('similarity/id_to_pred', id_to_pred, step=self.num_epoch)
-        Writer.add_scalar('similarity/attr_to_pred', attr_to_pred, step=self.num_epoch)
+        Writer.add_scalar("similarity/score", mean_disen, step=self.num_epoch)
+        Writer.add_scalar("similarity/id_to_pred", id_to_pred, step=self.num_epoch)
+        Writer.add_scalar("similarity/attr_to_pred", attr_to_pred, step=self.num_epoch)
 
-        Writer.add_scalar('landmarks/L2', np.mean(lnd_dist), step=self.num_epoch)
+        Writer.add_scalar("landmarks/L2", np.mean(lnd_dist), step=self.num_epoch)
 
         # Reconstruction
         # if self.args.test_real_attr:
@@ -244,43 +265,41 @@ class Trainer(object):
         #     Writer.add_scalar('reconstruction/real_PSNR', np.mean(real_reconstruction['PSNR']), step=self.num_epoch)
         #     Writer.add_scalar('reconstruction/real_ID', np.mean(real_reconstruction['ID']), step=self.num_epoch)
 
-        Writer.add_scalar('reconstruction/fake_MSE', np.mean(fake_reconstruction['MSE']), step=self.num_epoch)
-        Writer.add_scalar('reconstruction/fake_PSNR', np.mean(fake_reconstruction['PSNR']), step=self.num_epoch)
-        Writer.add_scalar('reconstruction/fake_ID', np.mean(fake_reconstruction['ID']), step=self.num_epoch)
+        Writer.add_scalar("reconstruction/fake_MSE", np.mean(fake_reconstruction['MSE']), step=self.num_epoch)
+        Writer.add_scalar("reconstruction/fake_PSNR", np.mean(fake_reconstruction['PSNR']), step=self.num_epoch)
+        Writer.add_scalar("reconstruction/fake_ID", np.mean(fake_reconstruction['ID']), step=self.num_epoch)
 
         # if mean_lnd_dist < self.min_lnd_dist:
-        #     self.logger.info('Minimum landmarks dist achieved. saving checkpoint')
+        #     print("Minimum landmarks dist achieved. Saving checkpoint")
         #     self.test_not_imporved = 0
         #     self.min_lnd_dist = mean_lnd_dist
-        #     self.model.my_save(f'_best_landmarks_epoch_{self.num_epoch}')
+        #     self.model._save(f"_best_landmarks_epoch_{self.num_epoch}")
 
         # if np.abs(id_to_pred) > self.max_id_preserve:
-        #     self.logger.info(f'Max ID preservation achieved! saving checkpoint')
+        #     print("Max ID preservation achieved! saving checkpoint")
         #     self.test_not_imporved = 0
         #     self.max_id_preserve = np.abs(id_to_pred)
-        #     self.model.my_save(f'_best_id_epoch_{self.num_epoch}')
-
+        #     self.model._save(f"_best_id_epoch_{self.num_epoch}")
         # else:
         #     self.test_not_imporved += 1
 
     # Helper function
     def test_reconstruction(self, images, zs_matching, errors_dict, display=False, display_name=None):
 
-        gen_images, id_embedding, attr_embedding, src_landmarks, idx_list = self.model.generator(images, zs_matching, images)
+        gen_images, id_embedding, attr_embedding, src_landmarks, idx_list, _ = self.model.generator(images, zs_matching, images)
 
-        recon_image = ((gen_images.flip(-3) + 1) / 2).clamp(0, 1)
-        recon_gen_id_embedding = self.model.generator.id_encoder(recon_image)
+        recon_images = ((gen_images.flip(-3) + 1) / 2).clamp(0, 1)
+        recon_gen_id_embedding = self.model.generator.id_encoder(recon_images)
 
-        mse = nn.functional.mse_loss(images, recon_image).numpy()
-        psnr = psnr_metric(recon_image, recon_image, data_range=1.0).numpy()
+        mse = nn.functional.mse_loss(images, recon_images).item()
+        psnr = psnr_metric(recon_images, images, data_range=1.0).item()
 
-        errors_dict['MSE'].extend(mse)
-        errors_dict['PSNR'].extend(psnr)
-        errors_dict['ID'].extend(nn.functional.cosine_similarity(id_embedding, recon_gen_id_embedding).numpy())
+        errors_dict["MSE"].append(mse)
+        errors_dict["PSNR"].append(psnr)
+        errors_dict["ID"].append(nn.functional.cosine_similarity(id_embedding, recon_gen_id_embedding).mean().item())
 
         if display:
-            Writer.add_image(f'reconstruction/input_{display_name}_img', images, step=self.num_epoch)
-            Writer.add_image(f'reconstruction/pred_{display_name}_img', gen_images, step=self.num_epoch)
+            Writer.add_image(f"reconstruction/input_{display_name}_img", [images[0], gen_images[0]], step=self.num_epoch)
 
     def get_id_attr_sampler(self, dataset_length, cross_frequency):
         split = dataset_length // (cross_frequency + 1)

@@ -108,12 +108,12 @@ class LandmarksDetector(nn.Module):
         else:
             return None, None, None
     
+    def _train(self):
+        self.base_model.train()
+        for param in self.base_model.parameters():
+            param.requires_grad = True
+
     def _test(self):
         self.base_model.eval()
         for param in self.base_model.parameters():
             param.requires_grad = False
-    
-    def _train(self):
-        self.base_model.eval()
-        for param in self.base_model.parameters():
-            param.requires_grad = True

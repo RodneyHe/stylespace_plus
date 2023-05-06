@@ -1,4 +1,4 @@
-from general_utils.general_utils import concatenate_image
+from general_utils.general_utils import convert_tensor_to_image, concatenate_image
 from pathlib import Path
 import torch
 
@@ -22,14 +22,15 @@ class Writer(object):
         Writer.writer.add_scalar(tag, val, step)
 
     @staticmethod
-    def add_image(tag, val: list, step):
+    def add_image(tag, val, step):
         if isinstance(val, list):
-            id_image, attr_image, gen_image = val
+            cat_image = concatenate_image(val)
+            val = convert_tensor_to_image(cat_image)
+        else:
+            val = convert_tensor_to_image(val)
 
-        con_image = concatenate_image(id_image, attr_image, gen_image)
+        Writer.writer.add_image(tag, val, step)
 
-        Writer.writer.add_image(tag, con_image.to(torch.uint8).numpy(), step)
-    
     @staticmethod
     def add_graph(model, *graph_inputs):
         Writer.writer.add_graph(model, *graph_inputs)
