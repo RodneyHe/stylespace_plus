@@ -7,7 +7,7 @@ import dnnlib, general_utils.legacy as legacy
 
 from model import networks_stylegan2
 
-def generate_data(base_generator_path, dataset_path, dataset_name, data_number, train_ratio, device) -> None:
+def generate_data(base_generator_path, dataset_path, dataset_name, data_number, device) -> None:
 
     # Network & load parameters
     with dnnlib.util.open_url(base_generator_path) as f:
@@ -27,13 +27,10 @@ def generate_data(base_generator_path, dataset_path, dataset_name, data_number, 
         "version": 0.0,
         "dataset_name": dataset_name,
         "dataset_number": data_number,
-        "train_ratio": train_ratio,
         "image_size": 256,
         "images": {}
     }
-    
-    c_label = torch.zeros([1, G.c_dim], device=device)
-    train_num = label["dataset_number"] * label["train_ratio"]
+
     num = 0
     pbar = tqdm(total=label["dataset_number"], ncols=80)
     while True:
@@ -47,8 +44,8 @@ def generate_data(base_generator_path, dataset_path, dataset_name, data_number, 
 
         with torch.no_grad():
             z = torch.from_numpy(np.random.RandomState(num).randn(1, G.z_dim)).to(device)
-            ctrlv = torch.zeros((1, 7424)).to(device)
-            gen_image = stylegan_generator(z, c_label, ctrlv, truncation_psi=1, noise_mode="const")
+            ctrlv = torch.zeros((1, 4928)).to(device)
+            gen_image = stylegan_generator(z, ctrlv)
             
             modified_styles = []
             for block in stylegan_generator.synthesis.children():
@@ -72,11 +69,6 @@ def generate_data(base_generator_path, dataset_path, dataset_name, data_number, 
             label["images"][str(num)] = {
                 "image_path": dataset_path + sub_dir01 + f"{num}.png",
             }
-
-            if num < train_num:
-                label["images"][str(num)]["type"] = "train"
-            else:
-                label["images"][str(num)]["type"] = "validate"
             
             pbar.update(1)
             num += 1

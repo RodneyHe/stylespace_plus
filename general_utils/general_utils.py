@@ -77,9 +77,8 @@ def convert_tensor_to_image(tensor):
 
 def concatenate_image(image_list):
     tamp_list = []
-    # Convert BGR to RGB and roughly move to (0, 1)
     for image in image_list:
-        tamp_list.append(((image.flip(-3) + 1) / 2 * 255).clamp(0, 255))
+        tamp_list.append(((image + 1) / 2 * 255).clamp(0, 255))
     
     # Concatenate images
     cat_image = torch.cat(tamp_list, 2)
@@ -88,20 +87,19 @@ def concatenate_image(image_list):
 
 def draw_landmarks(image, landmark):
     image_draw = ImageDraw.Draw(image)
-    for x, y in zip(landmark[0], landmark[1]):
+    for x, y in zip(landmark[0][0], landmark[0][1]):
         image_landmark_coords = [(x-1, y-1), (x+1, y+1)]
         image_draw.ellipse(image_landmark_coords, fill="red")
+    
+    for x, y in zip(landmark[1][0], landmark[1][1]):
+        image_landmark_coords = [(x-1, y-1), (x+1, y+1)]
+        image_draw.ellipse(image_landmark_coords, fill="green")
 
 def save_images(id_images: torch.Tensor, attr_images: torch.Tensor, gen_images: torch.Tensor, 
                 output_path: str, 
                 sample_number: int = 1, 
                 size: int = 256,
                 landmarks: bool = False, attr_landmarks: torch.Tensor = None, gen_landmarks: torch.Tensor = None):
-    
-    # Convert BGR to RGB
-    attr_images = attr_images.flip(-3)
-    id_images = id_images.flip(-3)
-    gen_images = gen_images.flip(-3)
 
     # Roughly move to (0, 1)
     attr_images = ((attr_images + 1) / 2).clamp(0, 1)
@@ -131,8 +129,7 @@ def save_images(id_images: torch.Tensor, attr_images: torch.Tensor, gen_images: 
         gen_image = TF.to_pil_image(TF.resize(tamp_var[2], size))
 
         if landmarks:
-            draw_landmarks(attr_image, tamp_var[3])
-            draw_landmarks(gen_image, tamp_var[4])
+            draw_landmarks(gen_image, (tamp_var[3], tamp_var[4]))
 
         out_image.paste(attr_image, tuple(attr_coords))
         out_image.paste(gen_image, tuple(gen_coords))

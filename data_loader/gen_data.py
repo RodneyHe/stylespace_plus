@@ -1,21 +1,21 @@
 import json, torch, cv2, os
 import numpy as np
 from torch.utils.data import Dataset
-import torchvision.transforms.functional as F
+import torchvision.transforms.functional as TF
 
 class Transforms():
     def resize(self, image, image_size):
-        image = F.resize(image, image_size)
+        image = TF.resize(image, image_size)
         return image
 
     def __call__(self, image):
         image = torch.from_numpy(image.transpose((2, 0, 1))).float()
         image.sub_(127.5).div_(128)
 
-        return image
+        return image.flip(-3) # convert to RGB
 
 class GeneratedDataset(Dataset):
-    def __init__(self, args, mode, transform=Transforms()):
+    def __init__(self, args, mode=None, transform=Transforms()):
         super().__init__()
         self.args = args
 
@@ -23,17 +23,17 @@ class GeneratedDataset(Dataset):
             label_data = json.load(f)
 
         self.image_set = []
-        self.z_set = []
         self.transform = transform
         
         dataset_number = len(label_data["images"])
         
         for idx in range(dataset_number):
-            if mode == "train" and label_data["images"][str(idx)]["type"] == "train":
-                self.image_set.append(label_data["images"][str(idx)]["image_path"])
-
-            elif mode == "validate" and label_data["images"][str(idx)]["type"] == "validate":
-                self.image_set.append(label_data["images"][str(idx)]["image_path"])
+            self.image_set.append(label_data["images"][str(idx)]["image_path"])
+        
+        if mode == "train":
+            self.image_set = self.image_set[:args.train_data_size]
+        elif mode == "validate":
+            self.image_set = self.image_set[args.train_data_size:]
 
     def __len__(self):
         return len(self.image_set)

@@ -13,14 +13,11 @@
             "justMyCode": true,
             "args": [
                 "exp_debug",
-                "--resolution", "256",
                 "--pretrained_models_path", "./pretrained",
                 "--dataset", "./dataset",
-                "--batch_size", "6",
-                "--cross_frequency", "3",
-                "--train_data_size", "16000",
+                "--train_data_size", "36000",
                 "--results_dir", "./output",
-                "--num_epochs", "10"
+                "--parameter_embedding"
             ]
         }
     ]

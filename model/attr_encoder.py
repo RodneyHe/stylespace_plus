@@ -1,10 +1,10 @@
 import torch, torchvision
 from torch import nn
-import torchvision.transforms.functional as F
+import torchvision.transforms.functional as TF
 import model.resnet as ResNet
 from general_utils import general_utils
 
-class Attr_Encoder(nn.Module):
+class AttrEncoder_Deprecated(nn.Module):
     def __init__(self, args, model_path=None):
         super().__init__()
         self.args = args
@@ -43,7 +43,7 @@ class Attr_Encoder(nn.Module):
         max_y = int(0.9 * self.args.resolution)
 
         img = img[:, :, min_x:max_x, min_y:max_y]
-        img = F.resize(img, (256, 256))
+        img = TF.resize(img, (256, 256))
 
         start = (256 - 224) // 2
         img = img[:, :, start: 224 + start, start: 224 + start]
@@ -73,25 +73,34 @@ class Attr_Encoder(nn.Module):
         self.base_model.eval()
         print(self.__class__.__name__ + " loads checkpoint from: " + str(self.args.weights_dir.joinpath(self.__class__.__name__ + reason + ".pth")))
 
-class Attr_Encoder_Deprecated(nn.Module):
+class AttrEncoder(nn.Module):
     def __init__(self, args, attr_model_path=None):
         super().__init__()
         self.args = args
         
-        self.base_model = torchvision.models.inception_v3(init_weights=True)
+        self.base_model = torchvision.models.inception_v3(weights=torchvision.models.Inception_V3_Weights.DEFAULT)
+        self.base_model.aux_logits = False
+        self.base_model.dropout = nn.Identity()
+        self.base_model.fc = nn.Identity()
         self.base_model.eval()
         
-        self.activation = {}
-        self.base_model.avgpool.register_forward_hook(self.get_activation("avgpool"))
+        # self.activation = {}
+        # self.base_model.avgpool.register_forward_hook(self.get_activation("avgpool"))
         
         if attr_model_path:
             pass
         
-    def forward(self, x):
-        x = F.resize(x, (299, 299))
-        _ = self.base_model(x)
+    # def forward(self, x):
+    #     x = TF.resize(x, (299, 299))
+    #     _ = self.base_model(x)
         
-        return self.activation["avgpool"]
+    #     return self.activation["avgpool"]
+    
+    def forward(self, x):
+        x = TF.resize(x, (299, 299))
+        x = self.base_model(x)
+        
+        return x
         
     def get_activation(self, name):
         def hook(model, input, output):
@@ -107,3 +116,11 @@ class Attr_Encoder_Deprecated(nn.Module):
         self.base_model.eval()
         for param in self.base_model.parameters():
             param.requires_grad = False
+    
+    def _save(self, reason):
+        torch.save(self.base_model.state_dict(), str(self.args.weights_dir.joinpath(self.__class__.__name__ + reason + ".pth")))
+    
+    def _load(self, reason):
+        self.base_model.load_state_dict(torch.load(str(self.args.weights_dir.joinpath(self.__class__.__name__ + reason + ".pth"))))
+        self.base_model.eval()
+        print(self.__class__.__name__ + " loads checkpoint from: " + str(self.args.weights_dir.joinpath(self.__class__.__name__ + reason + ".pth")))

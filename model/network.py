@@ -5,7 +5,7 @@ from model.generator import Generator
 
 class Network(nn.Module):
     def __init__(self, args, id_model_path, base_generator_path,
-                 landmarks_detector_path, device, load_chackpoint=False):
+                 landmarks_detector_path, device):
         super().__init__()
         self.args = args
         self.generator = Generator(args=args, 
@@ -14,8 +14,8 @@ class Network(nn.Module):
                                    landmarks_detector_path=landmarks_detector_path, 
                                    device=device)
 
-        if load_chackpoint:
-            self._load()
+        if args.load_checkpoint:
+            self._load(f"_{args.load_checkpoint}")
     
     def forward(self):
         raise NotImplemented()

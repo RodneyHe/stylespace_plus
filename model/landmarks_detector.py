@@ -5,6 +5,7 @@ import torchvision.transforms as transforms
 import numpy as np
 from model import mobilenet_v1
 from general_utils.landmarks_utils import ToTensorGjz, NormalizeGjz, parse_roi_box_from_bbox, predict_68pts
+from general_utils.pose_utils import parse_pose
 
 class LandmarksDetector(nn.Module):
     def __init__(self, args, landmarks_detector_path):
@@ -26,15 +27,17 @@ class LandmarksDetector(nn.Module):
         self.transform = transforms.Compose([ToTensorGjz(), NormalizeGjz(mean=128, std=127.5)])
         
     def forward(self, x, face_detection=True):
-        x, roi_boxes, idx_list = self.preprocess(x, face_detection)
+        x = self.preprocess(x, face_detection)
 
         if x is not None:
+            x, roi_boxes, idx_sets = x[0], x[1], x[2]
             params = self.base_model(x)
             pts68 = predict_68pts(params, roi_boxes)
-            pts68 = pts68[:,:,17:]
-            return pts68, idx_list
+            pts68 = pts68[:,:2,17:]
+            P, pose = parse_pose(params)
+            return pts68, pose, idx_sets
         else:
-            return None, None
+            return None
     
     # Preprocess
     def preprocess(self, images, face_detection=True):
@@ -77,7 +80,8 @@ class LandmarksDetector(nn.Module):
             dh, dw = ey - sy, ex - sx
             
             if len(image.shape) == 3:
-                res = torch.zeros((3, dh, dw), device=image.device)
+                res = -torch.zeros((3, dh, dw), device=image.device)
+                res = res.sub(127.5).div(128)
 
             if sx < 0:
                 sx, dsx = 0, -sx
@@ -103,10 +107,10 @@ class LandmarksDetector(nn.Module):
             cropped_image = TF.resize(res, (120, 120))
             cropped_image_list.append(cropped_image[None, ...])
         
-        if len(cropped_image_list) != 0:
-            return torch.cat(cropped_image_list, 0), roi_box_list, np.array(idx_list)
+        if len(idx_list) != 0:
+            return torch.cat(cropped_image_list, 0), roi_box_list, set(idx_list)
         else:
-            return None, None, None
+            return None
     
     def _train(self):
         self.base_model.train()

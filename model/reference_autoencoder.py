@@ -6,7 +6,7 @@ class ReferenceEncoder(nn.Module):
         super().__init__()
         self.args = args
         self.encoder = nn.Sequential(
-            nn.Linear(4096, 2048), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Linear(2048, 2048), nn.LeakyReLU(negative_slope=0.2, inplace=True),
             nn.Linear(2048, 512), nn.LeakyReLU(negative_slope=0.2, inplace=True),
             nn.Linear(512, 128), nn.LeakyReLU(negative_slope=0.2, inplace=True),
             nn.Linear(128, embedding_dim)

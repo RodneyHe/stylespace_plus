@@ -1,25 +1,21 @@
 import torch, pickle
 from torch import nn
-import torchvision.transforms.functional as F 
-import model.resnet as ResNet
+import torchvision.transforms.functional as TF 
+import model.inception_resnet_v1 as inception_resnet_v1
 from general_utils import general_utils
 
 class ID_Encoder(nn.Module):
     def __init__(self, args, model_path):
         super().__init__()
         self.args = args
-        self.base_model = ResNet.resnet50(num_classes=8631, include_top=False)
-        general_utils.load_state_dict(self.base_model, model_path)
+        self.base_model = inception_resnet_v1.InceptionResnetV1(pretrained="vggface2", pretrained_model_path=model_path)
         self.base_model.eval()
-
-        self.activation = {}
-        self.base_model.avgpool.register_forward_hook(self.get_activation("avgpool"))
 
     def forward(self, x):
         x = self.preprocess(x)
-        _ = self.base_model(x)
+        x = self.base_model(x)
 
-        return self.activation["avgpool"]
+        return x
     
     def preprocess(self, img):
         """
@@ -42,17 +38,12 @@ class ID_Encoder(nn.Module):
         max_y = int(0.9 * self.args.resolution)
 
         img = img[:, :, min_x:max_x, min_y:max_y]
-        img = F.resize(img, (256, 256))
+        img = TF.resize(img, (256, 256))
 
         start = (256 - 224) // 2
         img = img[:, :, start: 224 + start, start: 224 + start]
 
         return img
-    
-    def get_activation(self, name):
-        def hook(model, input, output):
-            self.activation[name] = output.squeeze()
-        return hook
     
     def _train(self):
         self.base_model.train()

@@ -1,59 +1,41 @@
-import json
-import PIL.Image as Image
-import torch
+import json, torch, cv2, os
+import numpy as np
 from torch.utils.data import Dataset
 import torchvision.transforms.functional as TF
-import os
 
 class Transforms():
-    def resize(self, image, landmarks, image_size):
+    def resize(self, image, image_size):
         image = TF.resize(image, image_size)
-        landmarks = landmarks / 1024 * image_size[0]
+        return image
 
-        return image, landmarks
+    def __call__(self, image):
+        image = torch.from_numpy(image.transpose((2, 0, 1))).float()
+        image.sub_(127.5).div_(128)
 
-    def __call__(self, image, landmarks):
-        image, landmarks = self.resize(image, landmarks, (299, 299))
-        image = TF.to_tensor(image)
+        return image.flip(-3) # convert to RGB
 
-        return image, landmarks
-
-class FaceLandmarksDataset(Dataset):
-    def __init__(self, mode, scope="all", transform=None):
+class FFHQDataset(Dataset):
+    def __init__(self, args, transform=Transforms()):
         super().__init__()
+        self.args = args
 
-        with open("./dataset/ffhq_dataset/ffhq-dataset-v2.json") as f:
-            data = json.load(f)
+        with open("./dataset/ffhq256_dataset/label.json") as f:
+            label_data = json.load(f)
 
-        self.image_filenames = []
-        self.landmarks = []
+        self.image_set = []
         self.transform = transform
-        self.root_dir = "dataset/ffhq_dataset"
+        dataset_number = len(label_data["images"])
 
-        for idx in range(len(data)):
-            if mode == "training" and data[str(idx)]["category"] == "training":
-                self.image_filenames.append(os.path.join(self.root_dir, data[str(idx)]["image"]["file_path"]))
-                self.landmarks.append(data[str(idx)]["image"]["face_landmarks"])
-            elif mode == "validation" and data[str(idx)]["category"] == "validation":
-                self.image_filenames.append(os.path.join(self.root_dir, data[str(idx)]["image"]["file_path"]))
-                self.landmarks.append(data[str(idx)]["image"]["face_landmarks"])
-        
-        if scope != "all" and isinstance(scope, int):
-            self.image_filenames = self.image_filenames[:scope]
-            self.landmarks = self.landmarks[:scope]
-
-        self.landmarks = torch.tensor(self.landmarks, requires_grad=True)
-
-        assert len(self.image_filenames) == len(self.landmarks)
+        for key in label_data["images"].keys():
+            self.image_set.append(label_data["images"][key]["image_path"])
 
     def __len__(self):
-        return len(self.image_filenames)
+        return len(self.image_set)
 
-    def __getitem__(self, index):
-        image = Image.open(self.image_filenames[index])
-        landmarks = self.landmarks[index]
+    def __getitem__(self, idx):
+        image = cv2.imread(self.image_set[idx])
 
         if self.transform:
-            image, landmarks = self.transform(image, landmarks)
+            image = self.transform(image)
 
-        return image, landmarks
+        return image

@@ -13,7 +13,7 @@ def main():
 
     Writer.set_writer(args.results_dir)
 
-    id_model_path = str(args.pretrained_models_path.joinpath("resnet50_scratch_weight.pkl"))
+    id_model_path = str(args.pretrained_models_path.joinpath("20180402-114759-vggface2.pt"))
     stylegan_G_path = str(args.pretrained_models_path.joinpath("stylegan2-ffhq-256x256.pkl"))
     landmarks_detector_path = str(args.pretrained_models_path.joinpath('3DDFA/phase1_wpdc_vdc.pth.tar'))
 
