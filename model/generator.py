@@ -47,11 +47,26 @@ class Generator(nn.Module):
 
         # Initialize orthogonal nn.Parameter
         if args.parameter_embedding:
-            self.pose_basis = nn.init.orthogonal_(nn.Parameter(torch.randn(3, 3))).to(device)
-            self.pose_parameter_decoder = parameter_decoder.ParameterDecoder(args, 3).to(device)
-            self.expression_parameter_decoder = parameter_decoder.ParameterDecoder(args, 102).to(device)
+            #self.pose_basis = nn.init.orthogonal_(nn.Parameter(torch.randn(3, 3))).to(device)
+            
+            # finetune attrencoder
+            self.attr_encoder.base_model.load_state_dict(torch.load("./output/exp_18-conv0--2/weights/AttrEncoder.pth"))
+            self.attr_encoder.eval()
+            self.attr_encoder._test()
+            
+            # frozen pose encoder
+            self.pose_parameter_decoder = parameter_decoder.ParameterDecoder(args, parameter_type="pose").to(device)
+            self.pose_parameter_decoder.model.load_state_dict(torch.load("./output/exp_18-conv0--2/weights/ReferenceNetwork.pth"))
+            self.pose_parameter_decoder.eval()
+            self.pose_parameter_decoder._test()
+
+            # train expression encoder
+            self.expression_parameter_decoder = parameter_decoder.ParameterDecoder(args, parameter_type="expression").to(device)
+            self.style_padding = torch.zeros((self.args.batch_size, 2880), requires_grad=False).to(device)
         else:
             self.reference_network = reference_network.ReferenceNetwork(args).to(device)
+            self.style_padding1 = torch.zeros((self.args.batch_size, 1536), requires_grad=False).to(device)
+            self.style_padding2 = torch.zeros((self.args.batch_size, 576), requires_grad=False).to(device)
             
     def forward(self, id_imgs, id_zs, attr_imgs):
 
@@ -60,7 +75,7 @@ class Generator(nn.Module):
 
         if src_lnd_results is not None:
             
-            src_lnds, src_poses, src_idx_sets = src_lnd_results[0], src_lnd_results[1], src_lnd_results[2]
+            src_lnds, src_poses, src_calib_lnds, src_idx_sets = src_lnd_results[0], src_lnd_results[1], src_lnd_results[2], src_lnd_results[3]
         
             if id_zs.shape[0] != src_lnds.shape[0]:
                 # id_imgs = torch.cat([id_imgs[i][None,...] for i in src_idx_sets], 0)
@@ -71,24 +86,24 @@ class Generator(nn.Module):
             # Identity embedding
             id_embeds = self.id_encoder(id_imgs)
 
-            # _poses = src_poses.reshape(-1, 3)[:,None,:] # N, C, L
-            # _landmarks = src_lnds.reshape(-1, 102)[:,None,:] # N, C, L
-
-            # Convert landmark range and eular angle range to (0, 1) correspondingly
-            norm_lnds = src_lnds.reshape(-1, 102) / (id_imgs.shape[-1] - 1) # (0, 255) -> (0, 1)
-            norm_poses = src_poses.reshape(-1, 3) / 6.2832 # (0, 2pi) -> (0, 1)
-
             if self.args.parameter_embedding:
-                pose_control_vectors = self.pose_parameter_decoder(norm_poses @ self.pose_basis)
-                #expression_control_vectors = self.expression_parameter_decoder(_landmarks)
-                control_vector = (pose_control_vectors).squeeze()
-                ortho_regularizer = self.pose_basis[0] @ self.pose_basis[1] + self.pose_basis[1] @ self.pose_basis[2] \
-                                    + self.pose_basis[0] @ self.pose_basis[2]
+                # Convert landmark range and eular angle range to (0, 1) correspondingly
+                #norm_calib_lnds = src_calib_lnds.reshape(-1, 102) / (id_imgs.shape[-1] - 1) # (0, 255) -> (0, 1)
+                #norm_poses = (src_poses / 1.5708 + 1) / 2 # (-0.5pi, 0.5pi) -> (0, 1)
+
+                attr_embeds = self.attr_encoder(attr_imgs)
+
+                pose_control_vectors = self.pose_parameter_decoder(attr_embeds)
+                expression_control_vectors = self.expression_parameter_decoder(attr_embeds)
+                control_vector = torch.cat([pose_control_vectors, expression_control_vectors, self.style_padding], -1)
+                # ortho_regularizer = self.pose_basis[0] @ self.pose_basis[1] + self.pose_basis[1] @ self.pose_basis[2] \
+                #                     + self.pose_basis[0] @ self.pose_basis[2]
             else:
                 # Attribute embedding
                 attr_embeds = self.attr_encoder(attr_imgs)
                 control_vector = self.reference_network(attr_embeds)
-                ortho_regularizer = 0
+
+                control_vector = torch.cat([self.style_padding1, control_vector, self.style_padding2], -1)
 
             gen_imgs = self.stylegan_generator(id_zs, control_vector)
 
@@ -100,7 +115,7 @@ class Generator(nn.Module):
 
             mod_styles = torch.cat(mod_styles, -1)
 
-            return gen_imgs, id_embeds, src_lnds, src_poses, src_idx_sets, mod_styles, ortho_regularizer
+            return gen_imgs, id_embeds, src_lnds, src_poses, src_calib_lnds, src_idx_sets, mod_styles
         
         else:
             return None

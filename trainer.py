@@ -64,7 +64,7 @@ class Trainer(object):
         self.lambda_id = 1
         self.lambda_landmarks = 0.01
         self.lambda_pixel = 0.02
-        self.lambda_styles_regularizer = 5e-8
+        self.lambda_styles_regularizer = 5e-7
 
         # Test
         self.test_not_imporved = 0
@@ -79,18 +79,18 @@ class Trainer(object):
 
             try:
                 # Dynanmically change the learning rate
-                if self.num_epoch >= 10:
+                if self.num_epoch >= 5:
                     self.adjust_learning_rate(self.optimizer, 1e-6)
-                elif self.num_epoch >= 20:
+                elif self.num_epoch >= 10:
                     self.adjust_learning_rate(self.optimizer, 5e-7)
-                elif self.num_epoch >= 30:
+                elif self.num_epoch >= 20:
                     self.adjust_learning_rate(self.optimizer, 1e-7)
-                elif self.num_epoch >= 35:
+                elif self.num_epoch >= 30:
                     self.adjust_learning_rate(self.optimizer, 5e-8)
 
                 # Train epoch
                 self.train_epoch()
-                
+
                 # Test epoch
                 with torch.no_grad():
                     self.test_epoch()
@@ -115,9 +115,9 @@ class Trainer(object):
         self.train_id_iter = iter(self.train_id_loader)
         self.train_attr_iter = iter(self.train_attr_loader)
 
-        c = 0
         pbar = tqdm(range(len(self.train_id_iter)), ncols=80, postfix="train_epoch")
         for step in pbar:
+            
             if self.args.cross_frequency and ((step + 1) % self.args.cross_frequency == 0):
                 self.is_cross_epoch = True
             else:
@@ -126,6 +126,8 @@ class Trainer(object):
             id_imgs, id_zs = next(self.train_id_iter)
             id_imgs = id_imgs.to(self.device)
             id_zs = id_zs.to(self.device)
+            
+            #print(self.args.cross_frequency and ((step + 1) % self.args.cross_frequency == 0), self.is_cross_epoch)
             
             if self.is_cross_epoch:
                 attr_imgs, _ = next(self.train_attr_iter)
@@ -136,17 +138,9 @@ class Trainer(object):
             src_results = self.model.generator(id_imgs, id_zs, attr_imgs)
             
             if src_results is None:
-                #print("src_results is None")
-                c += 1
-                if c >= 100:
-                    general_utils.save_images(id_images=id_imgs, 
-                                            attr_images=attr_imgs, 
-                                            gen_images=torch.zeros_like(id_imgs), 
-                                            output_path=self.args.images_results.joinpath(f"e{self.num_epoch}_s{step}_test.png"), landmarks=False)
                 continue
-            
-            c = 0
-            gen_imgs, id_embeds, src_lnds, src_poses, src_idx_sets, mod_styles, ortho_regularizer = src_results[0], src_results[1], \
+
+            gen_imgs, id_embeds, src_lnds, src_poses, src_calib_lnds, src_idx_sets, mod_styles = src_results[0], src_results[1], \
                 src_results[2], src_results[3], src_results[4],  src_results[5], src_results[6]
 
             if self.args.id_loss:
@@ -160,7 +154,16 @@ class Trainer(object):
                     #print("pred_lnd_results is None")
                     continue
                 
-                pred_lnds, pred_poses, pred_idx_sets = pred_lnd_results[0], pred_lnd_results[1], pred_lnd_results[2]
+                pred_lnds, pred_poses, pred_calib_lnds, pred_idx_sets = pred_lnd_results[0], pred_lnd_results[1], pred_lnd_results[2], pred_lnd_results[3]
+                
+                # general_utils.save_images(id_images=id_imgs, 
+                #                           attr_images=attr_imgs, 
+                #                           gen_images=gen_imgs,
+                #                           output_path=self.args.images_results.joinpath(f"e{self.num_epoch}_s{step}_test.png"), 
+                #                           sample_number=3,
+                #                           landmarks=True,
+                #                           attr_landmarks=src_calib_lnds,
+                #                           gen_landmarks=pred_calib_lnds)
                 
                 if len(src_idx_sets) != len(pred_idx_sets):
                     # intersets = src_idx_sets & pred_idx_sets
@@ -171,13 +174,14 @@ class Trainer(object):
                     #print("src_idx_lists len != pred_idx_lists")
                     continue
                 else:
-                    # landmarks_loss = self.lambda_landmarks * (torch.mean(self.landmarks_loss_fun(pred_landmarks, src_lnds)) \
-                    #                   + torch.mean(self.landmarks_loss_fun(pred_poses, src_poses)))
-                    landmarks_loss = 10 * torch.mean(self.landmarks_loss_fun(pred_poses, src_poses))
-                if landmarks_loss > 1:
+                    landmarks_loss = self.lambda_landmarks * torch.mean(self.landmarks_loss_fun(pred_lnds, src_lnds))
+                    #calib_landmarks_loss = self.lambda_landmarks * 0.1 * torch.mean(self.landmarks_loss_fun(pred_calib_lnds, src_calib_lnds))
+                    pose_loss = 10 * torch.mean(self.landmarks_loss_fun(pred_poses, src_poses))
+                    attr_loss = pose_loss + landmarks_loss
+                if attr_loss > 1:
                     #print("landmarks_loss > 1")
                     continue
-
+            
             if not self.is_cross_epoch and self.args.pixel_loss:
                 l1_loss = torch.mean(self.pixel_loss_func(attr_imgs, gen_imgs) * self.pixel_mask)
 
@@ -190,18 +194,22 @@ class Trainer(object):
                 pixel_loss = 0
 
             # Compute the negative log likelihood of style space
-            #styles_regularizer = self.lambda_styles_regularizer * torch.pow((mod_styles-torch.broadcast_to(self.styles_mean, (mod_styles.shape[0], mod_styles.shape[1]))), 2).sum()
+            styles_regularizer = self.lambda_styles_regularizer * torch.pow((mod_styles-torch.broadcast_to(self.styles_mean, (mod_styles.shape[0], mod_styles.shape[1]))), 2).sum()
 
-            total_loss = id_loss + landmarks_loss + pixel_loss
+            total_loss = id_loss + attr_loss + pixel_loss + styles_regularizer
 
             Writer.add_scalar("loss/id_loss", id_loss, step=(step+self.num_epoch*len(self.train_id_iter)))
-            Writer.add_scalar("loss/landmarks_loss", landmarks_loss, step=(step+self.num_epoch*len(self.train_id_iter)))
-            #Writer.add_scalar("loss/styles_regularizer", styles_regularizer, step=(step+self.num_epoch*len(self.train_id_iter)))
+            Writer.add_scalar("loss/attr_loss", attr_loss, step=(step+self.num_epoch*len(self.train_id_iter)))
+            Writer.add_scalar("loss/landmark_loss", landmarks_loss, step=(step+self.num_epoch*len(self.train_id_iter)))
+            #Writer.add_scalar("loss/calib_landmark_loss", calib_landmarks_loss, step=(step+self.num_epoch*len(self.train_id_iter)))
+            Writer.add_scalar("loss/pose_loss", pose_loss, step=(step+self.num_epoch*len(self.train_id_iter)))
             Writer.add_scalar("loss/total_loss", total_loss, step=(step+self.num_epoch*len(self.train_id_iter)))
 
             if not self.is_cross_epoch:
                 Writer.add_scalar("loss/pixel_loss", pixel_loss, step=(step+self.num_epoch*len(self.train_id_iter)))
 
+            #print(self.args.cross_frequency and ((step + 1) % self.args.cross_frequency == 0), self.is_cross_epoch)
+            
             if (step + 1) % 3000 == 0 and self.is_cross_epoch:
                 general_utils.save_images(id_images=id_imgs, 
                                           attr_images=attr_imgs, 
@@ -245,7 +253,7 @@ class Trainer(object):
             if gen_results is None:
                 continue
 
-            gen_imgs, id_embeds, src_lnds, src_poses, src_idx_lists = gen_results[0], gen_results[1], gen_results[2], gen_results[3], gen_results[4]
+            gen_imgs, id_embeds, src_lnds, src_poses, src_calib_lnds, src_idx_lists = gen_results[0], gen_results[1], gen_results[2], gen_results[3], gen_results[4], gen_results[5]
 
             gen_id_embeds = self.model.generator.id_encoder(gen_imgs)
             attr_id_embeds = self.model.generator.id_encoder(attr_imgs)
@@ -260,13 +268,13 @@ class Trainer(object):
             if pred_lnd_results is None:
                 continue
             
-            pred_lnds, pred_poses, pred_idx_lists = pred_lnd_results[0], pred_lnd_results[1], pred_lnd_results[2]
+            pred_lnds, pred_poses, pred_calib_lnds, pred_idx_lists = pred_lnd_results[0], pred_lnd_results[1], pred_lnd_results[2], pred_lnd_results[3]
 
             if len(src_idx_lists) != len(pred_idx_lists):
                 continue
             else:
-                lnd_dist.append(nn.functional.mse_loss(src_lnds, pred_lnds).item())
                 pose_dist.append(nn.functional.mse_loss(src_poses, pred_poses).item())
+                lnd_dist.append(nn.functional.mse_loss(pred_lnds, src_lnds).item())
 
                 # Fake reconstruction (using generated image as attribute image)
                 self.test_reconstruction(id_imgs, id_zs, fake_reconstruction, display=(step==0), display_name="id_img")
@@ -278,8 +286,8 @@ class Trainer(object):
                                               output_path=self.args.images_results.joinpath(f"test_e{self.num_epoch}.png"),
                                               sample_number=3,
                                               landmarks=True,
-                                              attr_landmarks=src_lnds[:,:2,:],
-                                              gen_landmarks=pred_lnds[:,:2,:])
+                                              attr_landmarks=src_lnds,
+                                              gen_landmarks=pred_lnds)
 
                     Writer.add_image("test/prediction", [attr_imgs[0], gen_imgs[0], id_imgs[0]], step=self.num_epoch)
                     save_image = False
@@ -306,10 +314,10 @@ class Trainer(object):
         # Writer.add_scalar("reconstruction/fake_ID", np.mean(fake_reconstruction['ID']), step=self.num_epoch)
 
         # FID
-        if not self.args.parameter_embedding:
-            fid_score = FIDScore(self.args, self.model.generator, self.device)
-            fid = fid_score.calculate_fid(max_real=None, num_gen=3000)
-            Writer.add_scalar("test/FID", fid, step=self.num_epoch)
+        # if not self.args.parameter_embedding:
+        #     fid_score = FIDScore(self.args, self.model.generator, self.device)
+        #     fid = fid_score.calculate_fid(max_real=None, num_gen=3000)
+        #     Writer.add_scalar("test/FID", fid, step=self.num_epoch)
 
         if mean_lnd_dist < self.min_lnd_dist:
             print("Minimum landmarks dist achieved. Saving checkpoint")

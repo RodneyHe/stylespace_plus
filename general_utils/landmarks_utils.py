@@ -35,6 +35,52 @@ def _predict_vertices(params, roi_bboxes, dense, transform=True):
 def predict_68pts(param, roi_box):
     return _predict_vertices(param, roi_box, dense=False)
 
+def landmarks_calibration(landmarks: torch.Tensor, Rs: torch.Tensor, t3ds: torch.Tensor):
+    '''
+    Args:
+        landmarks: (N, 3, 68). facial landmarks coordinates
+        R: (3,3). rotation matrix
+    Returns:
+        calibrated_landmarks: (N, 68, 3)
+    '''
+    assert len(landmarks.shape) == 3 
+    assert len(Rs.shape) == 3
+    assert landmarks.shape[0] == Rs.shape[0]
+    
+    #batch_size = landmarks.shape[0]
+    
+    #homo_lnds = torch.cat([landmarks.permute(0, 2, 1), torch.ones((batch_size, 68, 1), device=landmarks.device)], -1)
+    
+    # calib_lnds_list = []
+    # for homo_lnd, R, t3d in zip(homo_lnds, Rs, t3ds):
+    #     # Construct translation matrix
+        
+    #     T = torch.eye(4, device=landmarks.device)
+    #     T[0, 3] = -t3d[0]
+    #     T[1, 3] = -t3d[1]
+    #     T[2, 3] = -t3d[2]
+        
+    #     untrans_lnds = homo_lnd.matmul(T.T)
+        
+    #     calib_lnds = untrans_lnds[:, :3].matmul(R.T.inverse())
+    #     calib_lnds_list.append(calib_lnds[None,...])
+    
+    calib_lnds_list = []
+    for homo_lnd, R, t3d in zip(landmarks.permute(0,2,1), Rs, t3ds):
+        # Construct translation matrix
+        
+        # T = torch.eye(4, device=landmarks.device)
+        # T[0, 3] = -t3d[0]
+        # T[1, 3] = -t3d[1]
+        # T[2, 3] = -t3d[2]
+        
+        # untrans_lnds = homo_lnd.matmul(T.T)
+        
+        calib_lnds = homo_lnd[:, :3].matmul(R.T.inverse())
+        calib_lnds_list.append(calib_lnds[None,...])
+
+    return torch.cat(calib_lnds_list, 0).permute(0, 2, 1)
+
 class ToTensorGjz(object):
     def __call__(self, pic):
         if isinstance(pic, np.ndarray):

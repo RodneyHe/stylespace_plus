@@ -4,7 +4,7 @@ import torchvision.transforms.functional as TF
 import torchvision.transforms as transforms
 import numpy as np
 from model import mobilenet_v1
-from general_utils.landmarks_utils import ToTensorGjz, NormalizeGjz, parse_roi_box_from_bbox, predict_68pts
+from general_utils.landmarks_utils import ToTensorGjz, NormalizeGjz, parse_roi_box_from_bbox, predict_68pts, landmarks_calibration
 from general_utils.pose_utils import parse_pose
 
 class LandmarksDetector(nn.Module):
@@ -33,9 +33,9 @@ class LandmarksDetector(nn.Module):
             x, roi_boxes, idx_sets = x[0], x[1], x[2]
             params = self.base_model(x)
             pts68 = predict_68pts(params, roi_boxes)
-            pts68 = pts68[:,:2,17:]
-            P, pose = parse_pose(params)
-            return pts68, pose, idx_sets
+            pose, Rs, t3ds = parse_pose(params)
+            calib_lnds = landmarks_calibration(pts68, Rs, t3ds)
+            return pts68[:, :2, 17:], pose, calib_lnds[:, :2, 17:], idx_sets, pts68
         else:
             return None
     
@@ -52,7 +52,7 @@ class LandmarksDetector(nn.Module):
             return None
     
     def lazy_preprocess(self, images):
-        images = TF.resize(images, (120, 120))
+        images = TF.resize(images, (120, 120), antialias=True)
         return images
         
     def hard_preprocess(self, images):
@@ -104,7 +104,7 @@ class LandmarksDetector(nn.Module):
                 dey = dh
             
             res[:, dsy:dey, dsx:dex] = image[:, sy:ey, sx:ex]
-            cropped_image = TF.resize(res, (120, 120))
+            cropped_image = TF.resize(res, (120, 120), antialias=True)
             cropped_image_list.append(cropped_image[None, ...])
         
         if len(idx_list) != 0:

@@ -124,9 +124,9 @@ def save_images(id_images: torch.Tensor, attr_images: torch.Tensor, gen_images: 
     id_coords = [size*2, 0 ]
     for tamp_var in zip(*tamp_vars):
 
-        id_image = TF.to_pil_image(TF.resize(tamp_var[0], size))
-        attr_image = TF.to_pil_image(TF.resize(tamp_var[1], size))
-        gen_image = TF.to_pil_image(TF.resize(tamp_var[2], size))
+        id_image = TF.to_pil_image(TF.resize(tamp_var[0], size, antialias=True))
+        attr_image = TF.to_pil_image(TF.resize(tamp_var[1], size, antialias=True))
+        gen_image = TF.to_pil_image(TF.resize(tamp_var[2], size, antialias=True))
 
         if landmarks:
             draw_landmarks(gen_image, (tamp_var[3], tamp_var[4]))

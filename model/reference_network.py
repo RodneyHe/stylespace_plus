@@ -10,6 +10,14 @@ class ReferenceNetwork(nn.Module):
             nn.Linear(4096, 4096), nn.LeakyReLU(negative_slope=0.2, inplace=True),
             nn.Linear(4096, 4096), nn.LeakyReLU(negative_slope=0.2, inplace=True),
             nn.Linear(4096, 4928)
+            # nn.Linear(2048, 2560), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            # nn.Linear(2560, 2560), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            # nn.Linear(2560, 2560), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            # nn.Linear(2560, 2560)
+            # nn.Linear(2048, 2048), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            # nn.Linear(2048, 2048), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            # nn.Linear(2048, 2048), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            # nn.Linear(2048, 2048)
         )
 
     def forward(self, x):

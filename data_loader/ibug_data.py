@@ -27,7 +27,7 @@ class Transforms():
         return Image.fromarray(image), new_landmarks
     
     def resize(self, image, landmarks, image_size):
-        image = TF.resize(image, image_size)
+        image = TF.resize(image, image_size, antialias=True)
 
         return image, landmarks
     

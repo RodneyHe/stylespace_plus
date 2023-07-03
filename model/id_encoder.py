@@ -38,7 +38,7 @@ class ID_Encoder(nn.Module):
         max_y = int(0.9 * self.args.resolution)
 
         img = img[:, :, min_x:max_x, min_y:max_y]
-        img = TF.resize(img, (256, 256))
+        img = TF.resize(img, (256, 256), antialias=True)
 
         start = (256 - 224) // 2
         img = img[:, :, start: 224 + start, start: 224 + start]

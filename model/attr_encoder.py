@@ -43,7 +43,7 @@ class AttrEncoder_Deprecated(nn.Module):
         max_y = int(0.9 * self.args.resolution)
 
         img = img[:, :, min_x:max_x, min_y:max_y]
-        img = TF.resize(img, (256, 256))
+        img = TF.resize(img, (256, 256), antialias=True)
 
         start = (256 - 224) // 2
         img = img[:, :, start: 224 + start, start: 224 + start]
@@ -89,15 +89,9 @@ class AttrEncoder(nn.Module):
         
         if attr_model_path:
             pass
-        
-    # def forward(self, x):
-    #     x = TF.resize(x, (299, 299))
-    #     _ = self.base_model(x)
-        
-    #     return self.activation["avgpool"]
     
     def forward(self, x):
-        x = TF.resize(x, (299, 299))
+        x = TF.resize(x, (299, 299), antialias=True)
         x = self.base_model(x)
         
         return x

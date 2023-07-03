@@ -5,7 +5,7 @@ import torchvision.transforms.functional as TF
 
 class Transforms():
     def resize(self, image, image_size):
-        image = TF.resize(image, image_size)
+        image = TF.resize(image, image_size, antialias=True)
         return image
 
     def __call__(self, image):

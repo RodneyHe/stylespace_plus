@@ -17,27 +17,24 @@ param_std = torch.from_numpy(param_std).to(DEVICE)
 
 def parse_pose(params):
     camera_param_list = []
-    pose_yaw_list = []
-    pose_pitch_list = []
-    pose_roll_list = []
+    rotation_matrix_list = []
+    translation_list = []
+    pose_list = []
     for param in params:
         param = param * param_std + param_mean
         Ps = param[:12].reshape(3, -1)  # camera matrix
         # R = P[:, :3]
         s, R, t3d = P2sRt(Ps)
         P = torch.concat((R, t3d.reshape(3, -1)), axis=1)  # without scale parameters
-        camera_param_list.append(P)
+        camera_param_list.append(P[None,...])
+        rotation_matrix_list.append(R[None,...])
+        translation_list.append(t3d[None,...])
         # P = Ps / s
         yaw, pitch, roll = matrix2angle(R)  # yaw, pitch, roll
         # offset = p_[:, -1].reshape(3, 1)
-        pose_yaw_list.append(yaw[None, ...])
-        pose_pitch_list.append(pitch[None, ...])
-        pose_roll_list.append(roll[None, ...])
-    pose_yaw = torch.concat(pose_yaw_list, 0)
-    pose_pitch = torch.concat(pose_pitch_list, 0)
-    pose_roll = torch.concat(pose_roll_list, 0)
-    return torch.concat(camera_param_list, 0), torch.concat([pose_yaw, pose_pitch, pose_roll], 0)
-
+        pose_list.append(torch.cat([yaw[None,...], pitch[None,...], roll[None,...]], 0)[None,...])
+    
+    return torch.cat(pose_list, 0), torch.cat(rotation_matrix_list, 0), torch.cat(translation_list, 0)
 
 def matrix2angle(R):
     ''' compute three Euler angles from a Rotation Matrix. Ref: http://www.gregslabaugh.net/publications/euler.pdf
@@ -66,7 +63,6 @@ def matrix2angle(R):
 
     return x, y, z
 
-
 def P2sRt(P):
     ''' decompositing camera matrix P.
     Args:
@@ -87,10 +83,8 @@ def P2sRt(P):
     R = torch.concat((r1, r2, r3), 0)
     return s, R, t3d
 
-
 def main():
     pass
-
 
 if __name__ == '__main__':
     main()

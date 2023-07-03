@@ -2,24 +2,26 @@ import torch
 from torch import nn
 
 class ParameterDecoder(nn.Module):
-    def __init__(self, args, parameter_dims):
+    def __init__(self, args, parameter_type):
         super().__init__()
         self.args = args
-        self.model = nn.Sequential(
-            nn.Linear(parameter_dims, 256), nn.LeakyReLU(negative_slope=0.2, inplace=True),
-            nn.Linear(256, 512), nn.LeakyReLU(negative_slope=0.2, inplace=True),
-            nn.Linear(512, 1024), nn.LeakyReLU(negative_slope=0.2, inplace=True),
-            nn.Linear(1024, 2048), nn.LeakyReLU(negative_slope=0.2, inplace=True),
-            nn.Linear(2048, 4096), nn.LeakyReLU(negative_slope=0.2, inplace=True),
-            nn.Linear(4096, 4928)
-        )
-        # self.act = nn.LeakyReLU(negative_slope=0.2, inplace=True)
-        # self.linear1 = nn.Linear(parameter_dims, 256)
-        # self.linear2 = nn.Linear(256, 512)
-        # self.linear3 = nn.Linear(512, 1024)
-        # self.linear4 = nn.Linear(1024, 2048)
-        # self.linear5 = nn.Linear(2048, 4096)
-        # self.linear6 = nn.Linear(4096, 4928)
+
+        self.parameters_type = parameter_type
+        
+        if parameter_type == "pose":
+            self.model = nn.Sequential(
+                nn.Linear(2048, 2560), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+                nn.Linear(2560, 2560), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+                nn.Linear(2560, 2560), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+                nn.Linear(2560, 1536)
+            )
+        elif parameter_type == "expression":
+            self.model = nn.Sequential(
+                nn.Linear(2048, 2560), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+                nn.Linear(2560, 2560), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+                nn.Linear(2560, 2560), nn.LeakyReLU(negative_slope=0.2, inplace=True),
+                nn.Linear(2560, 2048)
+            )
 
     def forward(self, x):
         control_vector = self.model(x)

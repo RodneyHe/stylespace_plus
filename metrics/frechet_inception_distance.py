@@ -53,7 +53,7 @@ class FIDScore(object):
         for _ in pbar:
             images = next(ffhq_iter)
             images = ((images + 1) / 2).clamp(0, 1).to(self.device)
-            images = TF.resize(images, (299, 299))
+            images = TF.resize(images, (299, 299), antialias=True)
 
             with torch.no_grad():
                 features = self.inception_network(images)
@@ -77,29 +77,38 @@ class FIDScore(object):
         G = copy.deepcopy(self.G).eval().requires_grad_(False).to(self.device)
 
         # Initialize
-        stats = metric_utils.FeatureStats(capture_mean_cov=True, max_items=num_gen)
-        ffhq_dataloader = DataLoader(self.ffhq_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
+        ffhq_dataloader = DataLoader(self.ffhq_dataset, batch_size=batch_size, shuffle=True, drop_last=True, pin_memory=True)
         ffhq_iter = iter(ffhq_dataloader)
 
         if num_gen is None:
-            num_gen = len(ffhq_iter)
+            num_gen = len(ffhq_iter) * batch_size
+            
+        stats = metric_utils.FeatureStats(capture_mean_cov=True, max_items=num_gen)
+
+        style_padding = torch.zeros((batch_size, 2368)).to(self.device)
+        self.style_padding1 = torch.zeros((batch_size, 1536), requires_grad=False).to(self.device)
+        self.style_padding2 = torch.zeros((batch_size, 1344), requires_grad=False).to(self.device)
 
         # Generate samples
         while not stats.is_full():
             z = torch.randn((batch_size, 512)).to(self.device)
             ws = G.stylegan_generator.mapping(z, 0)
+            #ctrl_vecs = torch.zeros((batch_size, 4928)).to(self.device)
+            
+            #id_images = G.stylegan_generator.synthesis(ws, ctrl_vecs)
 
             attr_images_from_real = next(ffhq_iter)
-            attr_embeds = G.attr_encoder(attr_images_from_real.to(self.device))
-            ctrl_vecs = G.reference_network(attr_embeds)
-            #ctrl_vecs = torch.zeros((batch_size, 6048)).to(self.device)
-
-            gen_images = G.stylegan_generator.synthesis(ws, ctrl_vecs)
-
-            gen_images = ((gen_images + 1) / 2).clamp(0, 1)
-            gen_images = TF.resize(gen_images, (299, 299))
-
             with torch.no_grad():
+                attr_embeds = G.attr_encoder(attr_images_from_real.to(self.device))
+                #id_embeds = G.id_encoder(id_images)
+                ctrl_vecs = G.reference_network(attr_embeds)
+                #ctrl_vecs = torch.cat([ctrl_vecs, style_padding], -1)
+                ctrl_vecs = torch.cat([self.style_padding1, ctrl_vecs, self.style_padding2], -1)
+
+                gen_images = G.stylegan_generator.synthesis(ws, ctrl_vecs)
+
+                gen_images = ((gen_images + 1) / 2).clamp(0, 1)
+                gen_images = TF.resize(gen_images, (299, 299), antialias=True)
                 features = self.inception_network(gen_images)
         
             stats.append_torch(features)
